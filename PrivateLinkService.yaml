@@ -1,0 +1,113 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: Custom private service with PrivateLink
+Parameters:
+  SShKeyPairName:
+    Type: String
+    Description: Name of an existing EC2 KeyPair to enable SSH access to the instance
+Resources:
+  MyServiceConsumnerVpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: '10.0.0.0/16'
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+        - Value: 'MyServiceConsumnerVpc'
+          Key: Name
+  MyServiceConsumerInternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Value: 'MyServiceConsumerInternetGateway'
+          Key: Name
+   
+  MyServiceConsumerVPCGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref MyServiceConsumnerVpc
+      InternetGatewayId: !Ref MyServiceConsumerInternetGateway
+  MyServiceConsumerPublicSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref MyServiceConsumnerVpc
+      CidrBlock: '10.0.1.0/24'
+      MapPublicIpOnLaunch: true
+      AvailabilityZone: !Select [ 0, !GetAZs '' ]
+      Tags:
+        - Value: 'MyServiceConsumerPublicSubnet'
+          Key: Name
+  MyServiceConsumerPublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref MyServiceConsumnerVpc
+      Tags:
+        - Value: 'MyServiceConsumerPublicRouteTable'
+          Key: Name
+  MyServiceConsumerPublicRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref MyServiceConsumerPublicRouteTable
+      DestinationCidrBlock: '0.0.0.0/0'
+      GatewayId: !Ref MyServiceConsumerInternetGateway
+  MyServiceConsumerPublicSubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref MyServiceConsumerPublicSubnet
+      RouteTableId: !Ref MyServiceConsumerPublicRouteTable  
+  SecurityGroupWithSSHAccess:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Enable access to PrivateLink Service
+      VpcId: !Ref MyServiceConsumnerVpc
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          CidrIp: '0.0.0.0/0'
+          FromPort: 22
+          ToPort: 22
+        - IpProtocol: icmp
+          CidrIp: '0.0.0.0/0'
+          FromPort: -1
+          ToPort: -1
+      Tags:
+        - Key: Name
+          Value: SecurityGroupWithSSHAccess
+  MyServiceConsumerPrivateSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref MyServiceConsumnerVpc
+      CidrBlock: '10.0.2.0/24'
+      MapPublicIpOnLaunch: false
+      AvailabilityZone: !Select [ 1, !GetAZs '' ]
+      Tags:
+        - Value: 'MyServiceConsumerPrivateSubnet'
+          Key: Name
+  RootInstancePublicSubnet:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: t3.micro
+      ImageId: ami-00ca570c1b6d79f36 # Amazon Linux 2 AMI (HVM), SSD Volume Type - us-east-1
+      KeyName: !Ref SShKeyPairName # Replace with your key pair name
+      NetworkInterfaces:
+        - DeviceIndex: '0'
+          AssociatePublicIpAddress: true
+          SubnetId: !Ref MyServiceConsumerPublicSubnet
+          GroupSet:
+            - !Ref SecurityGroupWithSSHAccess
+          PrivateIpAddress: '10.0.1.10'
+      Tags:
+        - Key: Name
+          Value: RootInstancePublicSubnet
+  PrivateInstanceToTest:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: t3.micro
+      ImageId: ami-00ca570c1b6d79f36 # Amazon Linux 2 AMI (HVM), SSD Volume Type - us-east-1
+      KeyName: !Ref SShKeyPairName # Replace with your key pair name
+      NetworkInterfaces:
+        - DeviceIndex: '0'
+          SubnetId: !Ref MyServiceConsumerPrivateSubnet
+          GroupSet:
+            - !Ref SecurityGroupWithSSHAccess
+          PrivateIpAddress: '10.0.2.10'
+  
+
