@@ -14,6 +14,35 @@ Resources:
       Tags:
         - Value: 'MyServiceConsumnerVpc'
           Key: Name
+  MyServiceVpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: '10.1.0.0/16'
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+        - Value: 'MyServiceVpc'
+          Key: Name
+  MyServicePrivateSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref MyServiceVpc
+      CidrBlock: '10.1.1.0/24'
+      MapPublicIpOnLaunch: false
+      AvailabilityZone: !Select [ 0, !GetAZs '' ]
+      Tags:
+        - Value: 'MyServicePrivateSubnet1'
+          Key: Name
+  MyServicePrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref MyServiceVpc
+      CidrBlock: '10.1.2.0/24'
+      MapPublicIpOnLaunch: false
+      AvailabilityZone: !Select [ 0, !GetAZs '' ]
+      Tags:
+        - Value: 'MyServicePrivateSubnet2'
+          Key: Name
   MyServiceConsumerInternetGateway:
     Type: AWS::EC2::InternetGateway
     Properties:
@@ -71,13 +100,30 @@ Resources:
       Tags:
         - Key: Name
           Value: SecurityGroupWithSSHAccess
+  SecurityGroupHttpAccess:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Enable HTTP access to PrivateLink Service
+      VpcId: !Ref MyServiceVpc
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          CidrIp: '10.1.0.0/16'
+          FromPort: 80
+          ToPort: 80
+        - IpProtocol: tcp
+          CidrIp: '10.0.0.0/16'
+          FromPort: 80
+          ToPort: 80
+      Tags:
+        - Key: Name
+          Value: SecurityGroupHttpAccess
   MyServiceConsumerPrivateSubnet:
     Type: AWS::EC2::Subnet
     Properties:
       VpcId: !Ref MyServiceConsumnerVpc
       CidrBlock: '10.0.2.0/24'
       MapPublicIpOnLaunch: false
-      AvailabilityZone: !Select [ 1, !GetAZs '' ]
+      AvailabilityZone: !Select [ 0, !GetAZs '' ]
       Tags:
         - Value: 'MyServiceConsumerPrivateSubnet'
           Key: Name
@@ -109,5 +155,108 @@ Resources:
           GroupSet:
             - !Ref SecurityGroupWithSSHAccess
           PrivateIpAddress: '10.0.2.10'
+  ServiceNetworkLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: MyServiceNLB
+      Type: network
+      Scheme: internal
+      SecurityGroups:
+        - !Ref SecurityGroupHttpAccess
+      Subnets:
+        - !Ref MyServicePrivateSubnet1
+      Tags:
+        - Key: Name
+          Value: MyServiceNLB
+    DependsOn: 
+      - ServiceTargetGroup
+  ServiceTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: MyServiceTargetGroup
+      Port: 80
+      Protocol: TCP
+      VpcId: !Ref MyServiceVpc
+      TargetType: instance
+      HealthCheckProtocol: TCP
+      HealthCheckPort: '80'
+      Targets:
+        - Id: !Ref ServiceEC2Instance
+          Port: 80
+      Tags:
+        - Key: Name
+          Value: MyServiceTargetGroup
+
+  ServiceListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref ServiceNetworkLoadBalancer
+      Port: 80
+      Protocol: TCP
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref ServiceTargetGroup
+  ServiceEC2Instance:
+    Type: AWS::EC2::Instance
+    Metadata:
+      AWS::CloudFormation::Init:
+        config:
+          packages:
+            yum:
+              httpd: []
+          services:
+            sysvinit:
+              httpd:
+                enabled: true
+                ensureRunning: true
+          files:
+            /var/www/html/index.html:
+              content: |
+                <html>
+                  <head><title>PrivateLink Service</title></head>
+                  <body>
+                    <h1>Welcome to the PrivateLink Service!</h1>
+                    <p>This is served from an EC2 instance behind a Network Load Balancer.</p>
+                  </body>
+                </html>
+              mode: '000644'
+              owner: root
+              group: root
+    Properties:
+      InstanceType: t3.micro
+      ImageId: ami-00ca570c1b6d79f36
+      KeyName: !Ref SShKeyPairName
+      SubnetId: !Ref MyServicePrivateSubnet2
+      SecurityGroupIds:
+        - !Ref SecurityGroupHttpAccess
+      Tags:
+        - Key: Name 
+          Value: ServiceEC2Instance
+  MyPrivateLinkService:
+    Type: AWS::EC2::VPCEndpointService
+    Properties:
+      NetworkLoadBalancerArns:
+        - !Ref ServiceNetworkLoadBalancer
+      AcceptanceRequired: false
+      Tags:
+        - Key: Name
+          Value: MyPrivateLinkService
+Outputs:
+  PrivateLinkServiceName:
+    Description: The name of the PrivateLink Service
+    Value: !Sub "com.amazonaws.vpce.${AWS::Region}.${MyPrivateLinkService.ServiceId}"
+    Export:
+      Name: !Sub "${AWS::StackName}-PrivateLinkServiceName" 
+  PrivateLinkVPCId:
+    Description: The ID of the VPC where the service is deployed
+    Value: !Ref MyServiceConsumnerVpc
+    Export:
+      Name: !Sub "${AWS::StackName}-PrivateLinkVPCId"
+  PrivateLinkSubnetId:
+    Description: The ID of the subnet where the service is deployed
+    Value: !Ref MyServiceConsumerPrivateSubnet
+    Export: 
+      Name: !Sub "${AWS::StackName}-PrivateLinkSubnetId"
+  
   
 

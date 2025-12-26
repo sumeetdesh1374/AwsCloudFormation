@@ -1,0 +1,42 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: PrivateLink Service Consumer Setup
+Parameters:
+  NetworkStackName:
+    Type: String
+    Description: The name of the network stack that created the VPC and Subnet
+Resources:
+  HttpSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Enable HTTPS access to PrivateLink Service
+      VpcId: 
+        'Fn::ImportValue':
+          !Sub "${NetworkStackName}-PrivateLinkVPCId"
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: '10.0.0.0/16'
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: '10.0.0.0/16'
+  MyServiceEndpoint:  
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: 
+        'Fn::ImportValue':
+          !Sub "${NetworkStackName}-PrivateLinkVPCId"
+      ServiceName: 
+        'Fn::ImportValue':
+          !Sub "${NetworkStackName}-PrivateLinkServiceName"   
+      VpcEndpointType: Interface
+      SecurityGroupIds:
+        - !Ref HttpSecurityGroup
+      SubnetIds:
+        - 'Fn::ImportValue':
+            !Sub "${NetworkStackName}-PrivateLinkSubnetId"
+      PrivateDnsEnabled: false
+      Tags:
+        - Key: Name
+          Value: MyServiceEndpoint
