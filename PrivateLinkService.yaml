@@ -4,6 +4,9 @@ Parameters:
   SShKeyPairName:
     Type: String
     Description: Name of an existing EC2 KeyPair to enable SSH access to the instance
+  ServiceImageId:
+    Type: AWS::EC2::Image::Id
+    Description: AMI ID for the service EC2 instance
 Resources:
   MyServiceConsumnerVpc:
     Type: AWS::EC2::VPC
@@ -198,33 +201,9 @@ Resources:
           TargetGroupArn: !Ref ServiceTargetGroup
   ServiceEC2Instance:
     Type: AWS::EC2::Instance
-    Metadata:
-      AWS::CloudFormation::Init:
-        config:
-          packages:
-            yum:
-              httpd: []
-          services:
-            sysvinit:
-              httpd:
-                enabled: true
-                ensureRunning: true
-          files:
-            /var/www/html/index.html:
-              content: |
-                <html>
-                  <head><title>PrivateLink Service</title></head>
-                  <body>
-                    <h1>Welcome to the PrivateLink Service!</h1>
-                    <p>This is served from an EC2 instance behind a Network Load Balancer.</p>
-                  </body>
-                </html>
-              mode: '000644'
-              owner: root
-              group: root
     Properties:
       InstanceType: t3.micro
-      ImageId: ami-00ca570c1b6d79f36
+      ImageId: !Ref ServiceImageId
       KeyName: !Ref SShKeyPairName
       SubnetId: !Ref MyServicePrivateSubnet2
       SecurityGroupIds:
