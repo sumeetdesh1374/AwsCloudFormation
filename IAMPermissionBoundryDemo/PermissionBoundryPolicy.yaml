@@ -1,0 +1,105 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Parameters:
+  PolicyName:
+    Type: String
+    Default: "PermissionBoundaryPolicy"
+    Description: "Name of the Permission Boundary Policy"
+  UserPassword:
+    Type: String
+    NoEcho: true
+    Description: "Password for the TestUser"
+Resources:
+  PermissionBoundaryPolicy:
+    Type: "AWS::IAM::ManagedPolicy"
+    Properties:
+      ManagedPolicyName: !Ref PolicyName
+      PolicyDocument:  !Sub |
+                       {
+                          "Version": "2012-10-17",
+                          "Statement": [
+                              {
+                                  "Sid": "IAMAccess",
+                                  "Effect": "Allow",
+                                  "Action": "iam:*",
+                                  "Resource": "*"
+                              },
+                              {
+                                  "Sid": "DenyPermBoundaryIAMPolicyAlteration",
+                                  "Effect": "Deny",
+                                  "Action": [
+                                      "iam:DeletePolicy",
+                                      "iam:DeletePolicyVersion",
+                                      "iam:CreatePolicyVersion",
+                                      "iam:SetDefaultPolicyVersion"
+                                  ],
+                                  "Resource": [
+                                      "arn:aws:iam::${AWS::AccountId}:policy/${PolicyName}"
+                                  ]
+                              },
+                              {
+                                  "Sid": "DenyRemovalOfPermBoundaryFromAnyUserOrRole",
+                                  "Effect": "Deny",
+                                  "Action": [
+                                      "iam:DeleteUserPermissionsBoundary",
+                                      "iam:DeleteRolePermissionsBoundary"
+                                  ],
+                                  "Resource": [
+                                      "arn:aws:iam::${AWS::AccountId}:user/*",
+                                      "arn:aws:iam::${AWS::AccountId}:role/*"
+                                  ],
+                                  "Condition": {
+                                      "StringEquals": {
+                                          "iam:PermissionsBoundary": "arn:aws:iam::${AWS::AccountId}:policy/${PolicyName}"
+                                      }
+                                  }
+                              },
+                              {
+                                  "Sid": "DenyAccessIfRequiredPermBoundaryIsNotBeingApplied",
+                                  "Effect": "Deny",
+                                  "Action": [
+                                      "iam:PutUserPermissionsBoundary",
+                                      "iam:PutRolePermissionsBoundary"
+                                  ],
+                                  "Resource": [
+                                      "arn:aws:iam::${AWS::AccountId}:user/*",
+                                      "arn:aws:iam::${AWS::AccountId}:role/*"
+                                  ],
+                                  "Condition": {
+                                      "StringNotEquals": {
+                                          "iam:PermissionsBoundary": "arn:aws:iam::${AWS::AccountId}:policy/${PolicyName}"
+                                      }
+                                  }
+                              },
+                              {
+                                  "Sid": "DenyUserAndRoleCreationWithOutPermBoundary",
+                                  "Effect": "Deny",
+                                  "Action": [
+                                      "iam:CreateUser",
+                                      "iam:CreateRole"
+                                  ],
+                                  "Resource": [
+                                      "arn:aws:iam::${AWS::AccountId}:user/*",
+                                      "arn:aws:iam::${AWS::AccountId}:role/*"
+                                  ],
+                                  "Condition": {
+                                      "StringNotEquals": {
+                                          "iam:PermissionsBoundary": "arn:aws:iam::${AWS::AccountId}:policy/${PolicyName}"
+                                      }
+                                  }
+                              }
+                          ]
+                        }
+  TestUser:
+    Type: "AWS::IAM::User"
+    Properties:
+      UserName: "TestUser"
+      LoginProfile:
+        Password: !Ref UserPassword
+        PasswordResetRequired: false
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/IAMFullAccess
+      PermissionsBoundary: !Ref PermissionBoundaryPolicy
+      Tags:
+        - Key: "Department"
+          Value: "Testers"
+                       
