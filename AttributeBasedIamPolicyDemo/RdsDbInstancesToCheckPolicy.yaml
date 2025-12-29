@@ -1,0 +1,31 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Parameters:
+  RdsDbPassword:
+    Type: String
+    NoEcho: true
+    Description: "Password for the RDS DB Instance"
+Resources:
+  RdsDbInstance1:
+    Type: "AWS::RDS::DBInstance"
+    Properties:
+      DBInstanceIdentifier: "rds-db-instance-1"
+      AllocatedStorage: "20"
+      DBInstanceClass: "db.t3.micro"
+      Engine: "mysql"
+      MasterUsername: "admin"
+      MasterUserPassword: !Ref RdsDbPassword
+      Tags:
+        - Key: "Environment"
+          Value: "Production"
+  RdsDbInstance2:
+    Type: "AWS::RDS::DBInstance"
+    Properties:
+      DBInstanceIdentifier: "rds-db-instance-2"
+      AllocatedStorage: "20"
+      DBInstanceClass: "db.t3.micro"
+      Engine: "mysql"
+      MasterUsername: "admin"
+      MasterUserPassword: !Ref RdsDbPassword
+      Tags:
+        - Key: "Environment"
+          Value: "Development"
